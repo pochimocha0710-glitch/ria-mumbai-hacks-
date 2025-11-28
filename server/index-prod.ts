@@ -26,26 +26,62 @@ export async function serveStatic(app: Express, _server: Server) {
     console.error(`  - ${distPath}`);
     console.error(`  - ${distPathAlt}`);
     console.error(`Current working directory: ${process.cwd()}`);
+    console.error(`__dirname: ${__dirname}`);
     throw new Error(
       `Could not find the build directory. Make sure to run 'npm run build' first.`,
     );
   }
 
+  // Verify index.html exists
+  const indexPath = path.resolve(finalPath, "index.html");
+  if (!fs.existsSync(indexPath)) {
+    console.error(`index.html not found at: ${indexPath}`);
+    throw new Error(`index.html not found in build directory: ${finalPath}`);
+  }
+
   console.log(`✓ Serving static files from: ${finalPath}`);
+  console.log(`✓ index.html found at: ${indexPath}`);
 
   // Serve static files from the dist/public directory
+  // This middleware serves all static assets (JS, CSS, images, etc.)
   app.use(express.static(finalPath, {
-    index: false, // Don't serve index.html for directory requests
-    extensions: ['html', 'js', 'css', 'json', 'png', 'jpg', 'gif', 'svg', 'ico']
+    index: false, // We'll handle index.html manually
+    maxAge: '1y', // Cache static assets
+    etag: true
   }));
 
-  // Fall through to index.html for all routes (SPA routing)
-  app.use("*", (_req, res) => {
+  // Serve index.html for the root and all non-API routes (SPA routing)
+  // This must be LAST so it doesn't interfere with API routes or static assets
+  app.get("*", (req, res) => {
+    // Don't serve HTML for API routes
+    if (req.path.startsWith('/api')) {
+      return res.status(404).json({ error: 'API route not found' });
+    }
+    
+    // Don't serve HTML for static assets (should have been caught by express.static)
+    if (req.path.startsWith('/assets/') || 
+        req.path.match(/\.(js|css|png|jpg|gif|svg|ico|json|woff|woff2|ttf|eot)$/i)) {
+      return res.status(404).send('File not found');
+    }
+    
     const indexPath = path.resolve(finalPath, "index.html");
     if (!fs.existsSync(indexPath)) {
-      return res.status(404).send("index.html not found. Make sure to build the client first.");
+      console.error(`index.html not found at: ${indexPath}`);
+      return res.status(500).send(`
+        <h1>Build Error</h1>
+        <p>index.html not found at: ${indexPath}</p>
+        <p>Make sure to run 'npm run build' first.</p>
+      `);
     }
-    res.sendFile(indexPath);
+    
+    // Set proper Content-Type and send the HTML file
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        console.error('Error sending index.html:', err);
+        res.status(500).send('Error loading page');
+      }
+    });
   });
 }
 
