@@ -8,25 +8,42 @@ import runApp from "./app";
 
 export async function serveStatic(app: Express, _server: Server) {
   // Build outputs to dist/public from project root
-  // Use fileURLToPath to get the directory of the current file
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
+  // Try multiple path resolution strategies to work in all environments
   
-  // Resolve from the dist/index.js location (where this file will be after build)
-  // dist/index.js -> dist/public
-  const distPath = path.resolve(__dirname, "public");
+  // Strategy 1: Resolve from the bundled file location (dist/index.js)
+  let distPath: string;
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    distPath = path.resolve(__dirname, "public");
+  } catch (e) {
+    distPath = "";
+  }
 
-  // Fallback: resolve from process.cwd() (project root) in case path resolution fails
+  // Strategy 2: Resolve from process.cwd() (project root) - most reliable
   const distPathAlt = path.resolve(process.cwd(), "dist", "public");
+  
+  // Strategy 3: Resolve relative to current file (for development)
+  const distPathAlt2 = path.resolve(__dirname || process.cwd(), "..", "dist", "public");
 
-  const finalPath = fs.existsSync(distPath) ? distPath : distPathAlt;
+  // Try each path in order
+  let finalPath: string | null = null;
+  for (const testPath of [distPath, distPathAlt, distPathAlt2]) {
+    if (testPath && fs.existsSync(testPath)) {
+      const indexPath = path.resolve(testPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        finalPath = testPath;
+        break;
+      }
+    }
+  }
 
-  if (!fs.existsSync(finalPath)) {
+  if (!finalPath) {
     console.error(`Build directory not found. Tried:`);
     console.error(`  - ${distPath}`);
     console.error(`  - ${distPathAlt}`);
+    console.error(`  - ${distPathAlt2}`);
     console.error(`Current working directory: ${process.cwd()}`);
-    console.error(`__dirname: ${__dirname}`);
     throw new Error(
       `Could not find the build directory. Make sure to run 'npm run build' first.`,
     );
