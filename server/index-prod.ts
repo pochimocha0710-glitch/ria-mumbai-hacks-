@@ -11,10 +11,11 @@ export async function serveStatic(app: Express, _server: Server) {
   // Try multiple path resolution strategies to work in all environments
   
   // Strategy 1: Resolve from the bundled file location (dist/index.js)
-  let distPath: string;
+  let distPath: string = "";
+  let __dirname: string = "";
   try {
     const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
+    __dirname = path.dirname(__filename);
     distPath = path.resolve(__dirname, "public");
   } catch (e) {
     distPath = "";
@@ -24,7 +25,9 @@ export async function serveStatic(app: Express, _server: Server) {
   const distPathAlt = path.resolve(process.cwd(), "dist", "public");
   
   // Strategy 3: Resolve relative to current file (for development)
-  const distPathAlt2 = path.resolve(__dirname || process.cwd(), "..", "dist", "public");
+  const distPathAlt2 = __dirname 
+    ? path.resolve(__dirname, "..", "dist", "public")
+    : path.resolve(process.cwd(), "dist", "public");
 
   // Try each path in order
   let finalPath: string | null = null;
